@@ -1,4 +1,5 @@
-let fs = require("fs");
+const fs = require("fs");
+const zlib = require('zlib');
 let serveStatic = require('serve-static');
 let sanitizeOptions = require('./util/options').sanitizeOptions;
 let findEncoding = require('./util/encoding-selection').findEncoding;
@@ -44,18 +45,15 @@ function expressStaticGzipMiddleware(root, options) {
     }
 
     function registerCompressionsFromOptions() {
+        registerCompression("br", "br");
+        registerCompression("gzip", "gz");
+
         if (opts.customCompressions && opts.customCompressions.length > 0) {
             for (var i = 0; i < opts.customCompressions.length; i++) {
                 var customCompression = opts.customCompressions[i];
                 registerCompression(customCompression.encodingName, customCompression.fileExtension);
             }
         }
-
-        if (opts.enableBrotli) {
-            registerCompression("br", "br");
-        }
-
-        registerCompression("gzip", "gz");
     }
 
     function convertToCompressedRequest(req, res, compression) {
@@ -112,6 +110,54 @@ function expressStaticGzipMiddleware(root, options) {
                 return;
             }
         }
+
+        /*
+            Attempt to compress files that are not compressed or that have not failed to be compressed.
+        */
+
+       makeCompressedFiles(fullFilePath,(err,f,c)=>
+       {
+            if(err)
+            {
+                console.log(`Error while trying to compress ${f}`,err);
+                return;
+            }
+            addCompressionToFile(f, c);
+       })
+    }
+
+    async function makeCompressedFiles(f,e)
+    {
+        if(f.endsWith('.nz') || f.endsWith('.gz') || f.endsWith('.br'))
+            return;
+            
+        const src = `${f}`, nzn = `${f}.nz`, gzn = `${f}.gz`, brn = `${f}.br`;
+
+        if(fs.existsSync(nzn) || fs.existsSync(gzn) || fs.existsSync(brn))
+        {
+            e(null,gzn,compressions[1])
+            e(null,brn,compressions[0])
+            return;
+        }
+
+        fs.closeSync(fs.openSync(nzn, 'w'));
+        const tsz = fs.statSync(src).size;
+
+        const was_effective = (err,n) =>
+        {
+            if(err) e(err,n);
+            else if(fs.statSync(n).size > tsz)
+            {
+                fs.unlinkSync(n);
+                e("Compression Not Effective",n);
+            }
+            else e(null,n);
+        };
+
+        const fileContents = fs.createReadStream(src);
+
+        fileContents.pipe(zlib.createGzip()).pipe(fs.createWriteStream(gzn)).on('finish', (err) => was_effective(err,gzn,compressions[1]));
+        fileContents.pipe(zlib.createBrotliCompress()).pipe(fs.createWriteStream(brn)).on('finish', (err) => was_effective(err,brn,compressions[0]));
     }
 
     /**
