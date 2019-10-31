@@ -20,7 +20,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "serve-static": "^1.14.1"
+    "serve-static": "git+https://github.com/justdoityourself/serve-static.git"
   },
   "devDependencies": {
     "chai": "^4.1.2",
