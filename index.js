@@ -28,18 +28,25 @@ function expressStaticGzipMiddleware(root, options) {
     function expressStaticGzip(req, res, next) {
         changeUrlFromDirectoryToIndexFile(req);
 
-        var clientsAcceptedEncodings = req.header("accept-encoding");
+        var clientsAcceptedEncodings = req.headers["accept-encoding"];
 
-        var fileWithMatchingPath = files[decodeURIComponent(req.path)];
+        req.path = req.url;
+
+        var fileWithMatchingPath = files[decodeURIComponent(req.path.split('?')[0])];
         if (fileWithMatchingPath) {
             // The Vary Header is required for caching proxies to work properly
             res.setHeader("Vary", "Accept-Encoding");
 
-            var compression = findEncoding(clientsAcceptedEncodings, fileWithMatchingPath.compressions, opts.orderPreference);
+            let compression;
+            if(clientsAcceptedEncodings.indexOf('br')) compression = compressions[0];
+            if(clientsAcceptedEncodings.indexOf('gzip')) compression = compressions[1];
+
+            //var compression = findEncoding(clientsAcceptedEncodings, fileWithMatchingPath.compressions, opts.orderPreference);
             if (compression) {
                 convertToCompressedRequest(req, res, compression);
             }
         }
+        else console.log(req.url);
 
         serveStaticMiddleware(req, res, next);
     }
@@ -90,7 +97,7 @@ function expressStaticGzipMiddleware(root, options) {
             var filePath = directoryPath + "/" + filesInDirectory[i];
             var stats = fs.statSync(filePath);
             if (stats.isDirectory()) {
-                findCompressedFilesInDirectory(fs, filePath);
+                findCompressedFilesInDirectory(filePath);
             } else {
                 addMatchingCompressionsToFile(filesInDirectory[i], filePath);
             }
@@ -133,25 +140,27 @@ function expressStaticGzipMiddleware(root, options) {
             
         const src = `${f}`, nzn = `${f}.nz`, gzn = `${f}.gz`, brn = `${f}.br`;
 
-        if(fs.existsSync(nzn) || fs.existsSync(gzn) || fs.existsSync(brn))
-        {
-            e(null,gzn,compressions[1])
+        if(fs.existsSync(brn))
             e(null,brn,compressions[0])
+
+        if(fs.existsSync(gzn))
+            e(null,gzn,compressions[1])
+
+        if(fs.existsSync(nzn))
             return;
-        }
 
         fs.closeSync(fs.openSync(nzn, 'w'));
         const tsz = fs.statSync(src).size;
 
-        const was_effective = (err,n) =>
+        const was_effective = (err,n,c) =>
         {
-            if(err) e(err,n);
+            if(err) e(err,n,c);
             else if(fs.statSync(n).size > tsz)
             {
                 fs.unlinkSync(n);
-                e("Compression Not Effective",n);
+                e("Compression Not Effective",n,c);
             }
-            else e(null,n);
+            else e(null,n,c);
         };
 
         const fileContents = fs.createReadStream(src);
