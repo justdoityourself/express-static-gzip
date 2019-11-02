@@ -33,7 +33,7 @@ function expressStaticGzipMiddleware(root, options) {
         req.path = req.url;
 
         var fileWithMatchingPath = files[decodeURIComponent(req.path.split('?')[0])];
-        if (fileWithMatchingPath) {
+        if (clientsAcceptedEncodings&&fileWithMatchingPath) {
             // The Vary Header is required for caching proxies to work properly
             res.setHeader("Vary", "Accept-Encoding");
 
@@ -46,7 +46,6 @@ function expressStaticGzipMiddleware(root, options) {
                 convertToCompressedRequest(req, res, compression);
             }
         }
-        else console.log(req.url);
 
         serveStaticMiddleware(req, res, next);
     }
